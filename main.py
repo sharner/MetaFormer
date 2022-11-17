@@ -82,7 +82,8 @@ def parse_option():
                         help='pretrain')
     
     parser.add_argument('--tensorboard', action='store_true', help='using tensorboard')
-    
+    parser.add_argument('--use_attr', action='store_true', help='using image vector attributes')
+    parser.add_argument('--use_txt', action='store_true', help='using image text attribues')
     
     # distributed training
     parser.add_argument("--local_rank", type=int, required=True, help='local rank for DistributedDataParallel')

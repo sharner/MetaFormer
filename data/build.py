@@ -13,11 +13,13 @@ from torchvision import datasets, transforms
 from timm.data.constants import IMAGENET_DEFAULT_MEAN, IMAGENET_DEFAULT_STD
 from timm.data import Mixup
 from timm.data import create_transform
-from timm.data.transforms import _pil_interp
+from timm.data.transforms import str_to_pil_interp
 
 from .cached_image_folder import CachedImageFolder
 from .samplers import SubsetRandomSampler
 from .dataset_fg import DatasetMeta
+from .dataset_datalake import DatasetMeta_dl
+
 def build_loader(config):
     config.defrost()
     dataset_train, config.MODEL.NUM_CLASSES = build_dataset(is_train=True, config=config)
@@ -88,7 +90,8 @@ def build_dataset(is_train, config):
                              class_ratio=config.DATA.CLASS_RATIO,per_sample=config.DATA.PER_SAMPLE)
         nb_classes = 10000
     elif config.DATA.DATASET == 'inaturelist2021_mini':
-        root = './datasets/inaturelist2021_mini'
+        root = os.path.join(config.DATA.DATA_PATH, "inaturelist2021_mini")
+        #root = './datasets/inaturelist2021_mini'
         dataset = DatasetMeta(root=root,transform=transform,train=is_train,aux_info=config.DATA.ADD_META,dataset=config.DATA.DATASET)
         nb_classes = 10000
     elif config.DATA.DATASET == 'inaturelist2017':
@@ -100,9 +103,23 @@ def build_dataset(is_train, config):
         dataset = DatasetMeta(root=root,transform=transform,train=is_train,aux_info=config.DATA.ADD_META,dataset=config.DATA.DATASET)
         nb_classes = 8142
     elif config.DATA.DATASET == 'cub-200':
-        root = './datasets/cub-200'
+        root = os.path.join(config.DATA.DATA_PATH, "cub-200")
         dataset = DatasetMeta(root=root,transform=transform,train=is_train,aux_info=config.DATA.ADD_META,dataset=config.DATA.DATASET)
         nb_classes = 200
+    elif config.DATA.DATASET == 'layerjot.2022_05_04':
+        root = os.path.join(config.DATA.DATA_PATH, "layerjot")
+        dataset = DatasetMeta(root=root,transform=transform,train=is_train,aux_info=config.DATA.ADD_META,dataset=config.DATA.DATASET)
+        nb_classes = dataset.n_classes()
+    elif config.DATA.DATASET == 'n1_crops' \
+         or config.DATA.DATASET == 'n1_multimodal_data':
+        root = os.path.join(config.DATA.DATA_PATH, "layerjot",
+                            config.DATA.DATASET)
+        os.makedirs(root, exist_ok=True)
+        use_attr = config.DATA.USE_ATTR
+        use_txt = config.DATA.USE_TXT
+        use_aux = use_attr or use_txt
+        dataset = DatasetMeta_dl(root=root,transform=transform,train=is_train,aux_info=use_aux,use_attr=use_attr,use_txt=use_txt,dataset=config.DATA.DATASET,class_ratio=0.90)
+        nb_classes = dataset.n_classes()
     elif config.DATA.DATASET == 'stanfordcars':
         root = './datasets/stanfordcars'
         dataset = DatasetMeta(root=root,transform=transform,train=is_train,aux_info=config.DATA.ADD_META,dataset=config.DATA.DATASET)
@@ -154,14 +171,14 @@ def build_transform(is_train, config):
         if config.TEST.CROP:
             size = int((256 / 224) * config.DATA.IMG_SIZE)
             t.append(
-                transforms.Resize(size, interpolation=_pil_interp(config.DATA.INTERPOLATION)),
+                transforms.Resize(size, interpolation=str_to_pil_interp(config.DATA.INTERPOLATION)),
                 # to maintain same ratio w.r.t. 224 images
             )
             t.append(transforms.CenterCrop(config.DATA.IMG_SIZE))
         else:
             t.append(
                 transforms.Resize((config.DATA.IMG_SIZE, config.DATA.IMG_SIZE),
-                                  interpolation=_pil_interp(config.DATA.INTERPOLATION))
+                                  interpolation=str_to_pil_interp(config.DATA.INTERPOLATION))
             )
 
     t.append(transforms.ToTensor())

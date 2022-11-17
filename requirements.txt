@@ -1,0 +1,32 @@
+timm
+opencv-python
+termcolor
+yacs
+apex
+Pillow
+chardet
+gast
+google-api-core
+google-cloud-storage
+google-cloud-vision
+grpcio
+gcsfs
+idna
+imutils
+ipyevents
+ipywidgets
+itypes
+# jupyterlab
+mock
+natsort
+# numpy
+pandas
+opencv-contrib-python
+pyaml
+pyarrow
+pycocotools
+pyzbar
+redis
+urllib3
+utils
+wheel

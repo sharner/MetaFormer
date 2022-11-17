@@ -10,10 +10,12 @@ import pickle
 import numpy as np
 import pandas as pd
 import random
+
 random.seed(2021)
 from PIL import Image
 from scipy import io as scio
 from math import radians, cos, sin, asin, sqrt, pi
+
 IMG_EXTENSIONS = ['.png', '.jpg', '.jpeg']
 def get_spatial_info(latitude,longitude):
     if latitude and longitude:
@@ -302,6 +304,32 @@ def find_images_and_targets_aircraft(root,dataset,istrain=False,aux_info=False):
             target = class_to_idx[class_name]
             images_and_targets.append([file_path,target])
     return images_and_targets,class_to_idx,images_info
+
+def find_images_and_targets_layerjot_path(datapath, aux_info):
+    imageid2label = {}
+    with open(os.path.join(datapath,'imageid_to_label.txt'),'r') as f:
+        for line in f:
+            image_id,label = line.split()
+            if int(label) < 777:
+                imageid2label[int(image_id)] = int(label)
+    images_and_targets = []
+    images_info = []
+    #bert_embedding_root = os.path.join(root,'bert_embedding_cub')
+    with open(os.path.join(datapath,'imageid_to_file.txt'),'r') as f:
+        for line in f:
+            image_id,file_name = line.split()
+            if int(image_id) in imageid2label:
+                target = imageid2label[int(image_id)]
+                file_path = os.path.join(datapath, file_name)
+                images_and_targets.append([file_path,target])
+    return images_and_targets,None,images_info
+
+def find_images_and_targets_layerjot(root,dataset,istrain=False,aux_info=False):
+    imageid2label = {}
+    toplayerdir, datadir = dataset.split('.')
+    mlsetdir = 'train' if istrain else 'eval'
+    datapath = os.path.join(root, datadir, mlsetdir)
+    return find_images_and_targets_layerjot_path(datapath, aux_info)
             
 def find_images_and_targets_2017_2018(root,dataset,istrain=False,aux_info=False):
     train_class_info,train_id2meta,val_class_info,val_id2meta,class_to_idx,id2label = load_file(root,dataset)
@@ -410,6 +438,8 @@ class DatasetMeta(data.Dataset):
             images,class_to_idx,images_info = find_images_and_targets_nabirds(root,dataset,train)
         elif dataset == 'aircraft':
             images,class_to_idx,images_info = find_images_and_targets_aircraft(root,dataset,train)
+        elif dataset in ['layerjot.2022_05_04']:
+            images,class_to_idx,images_info = find_images_and_targets_layerjot(root,dataset,train)
         if len(images) == 0:
             raise RuntimeError(f'Found 0 images in subfolders of {root}. '
                                f'Supported image extensions are {", ".join(IMG_EXTENSIONS)}')
@@ -420,7 +450,9 @@ class DatasetMeta(data.Dataset):
         self.images_info = images_info
         self.load_bytes = load_bytes
         self.transform = transform
-        
+
+    def n_classes(self):
+        return len(self.class_to_idx)
 
     def __getitem__(self, index):
         if self.aux_info:

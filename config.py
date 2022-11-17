@@ -47,6 +47,8 @@ _C.DATA.NUM_READERS = 4
 
 #meta info
 _C.DATA.ADD_META = False
+_C.DATA.USE_ATTR = False
+_C.DATA.USE_TXT = False
 _C.DATA.FUSION = 'early'
 _C.DATA.MASK_PROB = 0.0
 _C.DATA.MASK_TYPE = 'constant'
@@ -228,7 +230,12 @@ def update_config(config, args):
         config.EVAL_MODE = True
     if args.throughput:
         config.THROUGHPUT_MODE = True
-
+    if args.use_attr:
+        config.DATA.USE_ATTR = True
+        config.DATA.ADD_META = True
+    if args.use_txt:
+        config.DATA.USE_TXT = True
+        config.DATA.ADD_META = True
         
     if args.num_workers is not None:
         config.DATA.NUM_WORKERS = args.num_workers

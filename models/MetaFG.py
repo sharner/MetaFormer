@@ -188,7 +188,7 @@ def MetaFG_0(pretrained=False, **kwargs):
             model, num_classes=model.num_classes, in_chans=kwargs.get('in_chans', 3))
     return model
 @register_model
-def MetaFG_1(pretrained=False, **kwargs):
+def MetaFG_1(pretrained=False, pretrained_cfg=None, **kwargs):
     model = MetaFG(conv_embed_dims = [64,96,192],attn_embed_dims=[384,768],
                  conv_depths = [2,2,6],attn_depths = [14,2],num_heads=8,mlp_ratio=4., **kwargs)
     model.default_cfg = default_cfgs['MetaFG_1']
@@ -197,7 +197,7 @@ def MetaFG_1(pretrained=False, **kwargs):
             model, num_classes=model.num_classes, in_chans=kwargs.get('in_chans', 3))
     return model
 @register_model
-def MetaFG_2(pretrained=False, **kwargs):
+def MetaFG_2(pretrained=False, pretrained_cfg=None, **kwargs):
     model = MetaFG(conv_embed_dims = [128,128,256],attn_embed_dims=[512,1024],
                  conv_depths = [2,2,6],attn_depths = [14,2],num_heads=8,mlp_ratio=4., **kwargs)
     model.default_cfg = default_cfgs['MetaFG_2']
