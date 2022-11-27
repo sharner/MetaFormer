@@ -1,4 +1,5 @@
-ARG PYTORCH="22.06"
+#ARG PYTORCH="22.07"
+ARG PYTORCH="22.11"
 
 FROM nvcr.io/nvidia/pytorch:${PYTORCH}-py3
 
@@ -43,20 +44,8 @@ RUN apt-get update && \
 
 #RUN echo "user:user" | chpasswd && adduser user sudo
 
-# Install gcloud and gsutil commands
-# https://cloud.google.com/sdk/docs/quickstart-debian-ubuntu
-# RUN export CLOUD_SDK_REPO="cloud-sdk-$(lsb_release -c -s)" && \
-#    echo "deb http://packages.cloud.google.com/apt $CLOUD_SDK_REPO main" | tee -a /etc/apt/sources.list.d/google-cloud-sdk.list && \
-#    curl https://packages.cloud.google.com/apt/doc/apt-key.gpg | apt-key add - && \
-#    apt-get update -y && apt-get install google-cloud-sdk -y
-# RUN apt-get install -y curl -SL https://sdk.cloud.google.com | bash
-
 WORKDIR /workspace
 COPY ./requirements.txt /workspace/
-
-ENV LAYERJOT_HOME="/layerjot"
-ENV HOME=/home/forest
-ENV PATH=$PATH:/usr/local/gcloud/google-cloud-sdk/bin
 
 RUN cd /workspace && pip install -r requirements.txt \
     && python -m pip install --upgrade pip
@@ -65,8 +54,22 @@ RUN curl -LO https://dl.google.com/linux/direct/google-chrome-stable_current_amd
 RUN apt-get install -y ./google-chrome-stable_current_amd64.deb
 RUN rm google-chrome-stable_current_amd64.deb
 
+# Downloading gcloud package
+RUN curl https://dl.google.com/dl/cloudsdk/release/google-cloud-sdk.tar.gz > /tmp/google-cloud-sdk.tar.gz
+
+# Installing the package
+RUN mkdir -p /usr/local/gcloud \
+  && tar -C /usr/local/gcloud -xvf /tmp/google-cloud-sdk.tar.gz \
+  && /usr/local/gcloud/google-cloud-sdk/install.sh
+
+# Other deps
+
 # RUN pip install numpy --upgrade
 # RUN pip install pandas --upgrade
 RUN pip install --upgrade gensim
+RUN pip install timm altair duckdb gcsfs
 
+ENV LAYERJOT_HOME="/layerjot"
+ENV HOME=/home/forest
+ENV PATH=$PATH:/usr/local/gcloud/google-cloud-sdk/bin
 #USER user
