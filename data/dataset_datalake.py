@@ -109,6 +109,115 @@ class DatasetMeta_dl(dsf.DatasetMeta):
             mod_dims[1] = mod_dims[1]/d1
         return mod_dims
 
+    def create_all_image_info(self, root, project, token, bucket, dataset, clear_dir, overwrite):
+        ds_dl = DatasetN1MultiModalCrops(project, token, bucket, dataset)
+        ds_dl.create_datasources()
+        n1_crops_tbl = ds_dl.images.scanner(columns=['item_id', 'image_name', 'in_fence', 'dims', 'description','crop_data']).to_table().to_pandas()
+
+        item_ids = n1_crops_tbl['item_id']
+        in_fences = n1_crops_tbl['in_fence']
+        dims = n1_crops_tbl['dims']
+        descs = n1_crops_tbl['description']
+        image_names = n1_crops_tbl['image_name']
+        crop_data = n1_crops_tbl['crop_data']
+
+        class_idx = 0
+        all_image_info = []
+        image_dir = os.path.join(root, "images")
+        if os.path.exists(image_dir) and clear_dir:
+            if not os.path.isdir(image_dir):
+                raise Exception("Directory {} is not a directory.  "
+                                "Exiting!".format(image_dir))
+            shutil.rmtree(image_dir)
+                    
+        iid_to_classidx = {}
+        for count in range(len(item_ids)):
+            iid = item_ids[count]
+            base_dir = os.path.join(image_dir, str(iid))
+
+            # If this is a new iid, assign it a class index
+            if not iid in iid_to_classidx:
+                iid_to_classidx[iid] = class_idx
+                class_idx += 1
+ 
+                # Create the directory for the iid.  If already exists,
+                # just make sure it is a directory.
+                if os.path.exists(base_dir):
+                    if not os.path.isdir(base_dir):
+                        raise Exception("Directory {} is not a directory."
+                                        " Exiting!".format(base_dir))
+                    else:
+                        os.makedirs(base_dir, exist_ok=True)
+
+            image_name = str(image_names[count])
+            #dim = self.ratio_dims(dims[count])
+            dim = dims[count]
+            in_fence = in_fences[count]
+            desc = descs[count]
+            cls_idx = iid_to_classidx[iid]
+
+            attr = {
+                'iid' : iid,
+                'image_name' : image_name,
+                'dim' : dim,
+                'in_fence' : in_fence,
+                'desc' : desc
+            }
+
+            # handle the attributes and image for this entry
+                    
+            img_file_name = "{}.jpg".format(image_name)
+            dest_path = os.path.join(base_dir, img_file_name)
+            if not os.path.exists(dest_path) or overwrite:
+                photo = crop_data[count]
+                stream_image = io.BytesIO(photo)
+                image = Image.open(stream_image)
+                image.save(dest_path)
+
+            # record complete infomation tuple for this entry.
+            info = (iid, cls_idx, dest_path, img_file_name, attr)
+            all_image_info.append(info)
+        return all_image_insfo
+    
+    def create_evaluation_list(self,
+                               project, token, bucket, dataset,
+                               root, eval_file,
+                               eval_ratio=0.10,
+                               overwrite=True,
+                               clear_dir=True):
+        # Wait for lock.  Once we have lock, we either read the
+        # information directly from the training/validation directory
+        # or we create those two files
+        while True:
+            lock = self.acquire_lock(root)
+            if lock:
+                break
+            time.sleep(self.LOCK_WAIT)
+
+        # The critical section is writing eval file
+
+        try:
+            eval_file_path = os.path.join(root, eval_file)
+            print("Checking if file {} exists...".format(eval_file_path))
+            if not os.path.exists(eval_file_path):
+                print("file {} does not exist. Making...".format(eval_file_path))
+                all_image_info = self.create_all_image_info(root, project, token, bucket, dataset, clear_dir, overwrite)
+                                   
+                # Now only use eval_ratio of all images for eval.
+                np.random.shuffle(all_image_info)
+                split_idx = int(len(all_image_info)*eval_ratio)
+                eval_list = all_image_info[:split_idx]
+
+                print("N classes {} n eval {}".
+                      format(class_idx+1, len(eval_list)))
+
+                # write info into training and validation file
+                self.write_layerjot(root, eval_file_path, eval_list, None)
+        finally:
+            # once the information is written, we can
+            # release the lock
+            self.release_lock(lock)
+
     def create_training_validation_lists(self,
                                          project, token, bucket, dataset,
                                          root, training_ratio,
@@ -132,75 +241,8 @@ class DatasetMeta_dl(dsf.DatasetMeta):
             print("Checking if file {} exists...".format(train_file_path))
             if not os.path.exists(train_file_path):
                 print("file {} does not exist. Making...".format(train_file_path))
-                #ds_dl = DatasetN1Crops(project, token, bucket, dataset)
-                ds_dl = DatasetN1MultiModalCrops(project, token, bucket, dataset)
-                ds_dl.create_datasources()
-                n1_crops_tbl = ds_dl.images.scanner(columns=['item_id', 'image_name', 'in_fence', 'dims', 'description','crop_data']).to_table().to_pandas()
-
-                item_ids = n1_crops_tbl['item_id']
-                in_fences = n1_crops_tbl['in_fence']
-                dims = n1_crops_tbl['dims']
-                descs = n1_crops_tbl['description']
-                image_names = n1_crops_tbl['image_name']
-                crop_data = n1_crops_tbl['crop_data']
-
-                class_idx = 0
-                all_image_info = []
-                image_dir = os.path.join(root, "images")
-                if os.path.exists(image_dir) and clear_dir:
-                    if not os.path.isdir(image_dir):
-                        raise Exception("Directory {} is not a directory.  "
-                                        "Exiting!".format(image_dir))
-                    shutil.rmtree(image_dir)
-                    
-                iid_to_classidx = {}
-                for count in range(len(item_ids)):
-                    iid = item_ids[count]
-                    base_dir = os.path.join(image_dir, str(iid))
-
-                    # If this is a new iid, assign it a class index
-                    if not iid in iid_to_classidx:
-                        iid_to_classidx[iid] = class_idx
-                        class_idx += 1
- 
-                        # Create the directory for the iid.  If already exists,
-                        # just make sure it is a directory.
-                        if os.path.exists(base_dir):
-                            if not os.path.isdir(base_dir):
-                                raise Exception("Directory {} is not a directory."
-                                                " Exiting!".format(base_dir))
-                        else:
-                            os.makedirs(base_dir, exist_ok=True)
-
-                    image_name = str(image_names[count])
-                    #dim = self.ratio_dims(dims[count])
-                    dim = dims[count]
-                    in_fence = in_fences[count]
-                    desc = descs[count]
-                    cls_idx = iid_to_classidx[iid]
-
-                    attr = {
-                        'iid' : iid,
-                        'image_name' : image_name,
-                        'dim' : dim,
-                        'in_fence' : in_fence,
-                        'desc' : desc
-                    }
-
-                    # handle the attributes and image for this entry
-                    
-                    img_file_name = "{}.jpg".format(image_name)
-                    dest_path = os.path.join(base_dir, img_file_name)
-                    if not os.path.exists(dest_path) or overwrite:
-                        photo = crop_data[count]
-                        stream_image = io.BytesIO(photo)
-                        image = Image.open(stream_image)
-                        image.save(dest_path)
-
-                    # record complete infomation tuple for this entry.
-                    info = (iid, cls_idx, dest_path, img_file_name, attr)
-                    all_image_info.append(info)
-                                     
+                all_image_info = self.create_all_image_info(root, project, token, bucket, dataset, clear_dir, overwrite)
+                                   
                 # Now partition into training and validation
                 np.random.shuffle(all_image_info)
                 split_idx = int(len(all_image_info)*training_ratio)
@@ -249,19 +291,27 @@ class DatasetMeta_dl(dsf.DatasetMeta):
             clear_dir=True,
             use_attr=False,
             use_txt=False
+            eval_mode=False
     ):
-        train_file = os.path.join("train", "imageinfo.json")
-        val_file = os.path.join("val", "imageinfo.json")
-        self.create_training_validation_lists(project, token, bucket,
-                                              dataset, root, class_ratio,
-                                              train_file, val_file,
-                                              overwrite=overwrite,
-                                              clear_dir=clear_dir)
+        if not eval_mode:
+            train_file = os.path.join("train", "imageinfo.json")
+            val_file = os.path.join("val", "imageinfo.json")
+            self.create_training_validation_lists(project, token, bucket,
+                                                  dataset, root, class_ratio,
+                                                  train_file, val_file,
+                                                  overwrite=overwrite,
+                                                  clear_dir=clear_dir)
+            use_file = train_file if train else val_file
+        else:
+            use_file = os.path.join("eval", "imageinfo.json")
+            self.create_evaluation_list(project, token, bucket, dataset,
+                                        root, class_ratio, use_file,
+                                        overwrite=overwrite,
+                                        clear_dir=clear_dir)
         self.aux_info = use_attr or use_txt
         self.dataset = dataset
         self.root = root
 
-        use_file = train_file if train else val_file
         images, class_to_iid, images_info = self.extract_images(root, use_file)
 
         self.samples = images
