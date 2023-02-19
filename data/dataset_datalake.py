@@ -112,7 +112,7 @@ class DatasetMeta_dl(dsf.DatasetMeta):
     def create_all_image_info(self, root, project, token, bucket, dataset, clear_dir, overwrite):
         ds_dl = DatasetN1MultiModalCrops(project, token, bucket, dataset)
         ds_dl.create_datasources()
-        n1_crops_tbl = ds_dl.images.scanner(columns=['item_id', 'image_name', 'in_fence', 'dims', 'description','crop_data']).to_table().to_pandas()
+        n1_crops_tbl = ds_dl.images.to_table(columns=['item_id', 'image_name', 'in_fence', 'dims', 'description','crop_data']).to_pandas()
 
         item_ids = n1_crops_tbl['item_id']
         in_fences = n1_crops_tbl['in_fence']
@@ -290,7 +290,7 @@ class DatasetMeta_dl(dsf.DatasetMeta):
             overwrite=True,
             clear_dir=True,
             use_attr=False,
-            use_txt=False
+            use_txt=False,
             eval_mode=False
     ):
         if not eval_mode:
@@ -305,7 +305,7 @@ class DatasetMeta_dl(dsf.DatasetMeta):
         else:
             use_file = os.path.join("eval", "imageinfo.json")
             self.create_evaluation_list(project, token, bucket, dataset,
-                                        root, class_ratio, use_file,
+                                        root, use_file, class_ratio,
                                         overwrite=overwrite,
                                         clear_dir=clear_dir)
         self.aux_info = use_attr or use_txt
