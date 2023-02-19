@@ -6,7 +6,7 @@ import numpy as np
 
 import torch
 from config import get_inference_config
-from models import build_model
+from models.build import build_model
 
 def parse_option():
     parser = argparse.ArgumentParser('Write eval model from checkpoint', add_help=False)

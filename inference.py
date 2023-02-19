@@ -2,7 +2,7 @@ from transformers import AutoTokenizer, AutoModel
 import torch
 from PIL import Image
 from config import get_inference_config
-from models import build_model
+from models.build import build_model
 from torch.autograd import Variable
 from torchvision.transforms import transforms
 import numpy as np

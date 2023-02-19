@@ -290,7 +290,7 @@ class DatasetMeta_dl(dsf.DatasetMeta):
             overwrite=True,
             clear_dir=True,
             use_attr=False,
-            use_txt=False
+            use_txt=False,
             eval_mode=False
     ):
         if not eval_mode:
