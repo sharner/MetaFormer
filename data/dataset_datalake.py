@@ -1,24 +1,25 @@
-import data.dataset_fg as dsf
-import data.TextUtils as tu
-from PIL import Image
 import fcntl
 import io
 import json
-import numpy as np
 import os
 import sys
 import shutil
-import random
 import time
 import copy
+import numpy as np
+import data.dataset_fg as dsf
+import data.TextUtils as tu
+from PIL import Image
+
+sys.path.append(os.path.join(os.environ['LAYERJOT_HOME'], 'ljcv-pycore'))
+from LJCVPyCore.TrainDatasets import DatasetN1MultiModalCrops
 
 NGRAM = 3
 NTOPICS = 64
 
-sys.path.append(os.path.join(os.environ['LAYERJOT_HOME'], 'ljcv-pycore'))
-from LJCVPyCore.TrainDatasets import DatasetN1Crops, DatasetN1MultiModalCrops
-
 # Required to properly encode numpy data types.
+
+
 class NpEncoder(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, np.bool_):
@@ -31,8 +32,9 @@ class NpEncoder(json.JSONEncoder):
             return obj.tolist()
         return json.JSONEncoder.default(self, obj)
 
+
 class DatasetMeta_dl(dsf.DatasetMeta):
-    LOCK_WAIT = 1 # seconds
+    LOCK_WAIT = 1  # seconds
 
     # simple python lock system.  Don't need to worry about
     # performance here.
@@ -43,7 +45,7 @@ class DatasetMeta_dl(dsf.DatasetMeta):
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
             return lock
-        except:
+        except Exception:
             return None
 
     def release_lock(self, lock):
@@ -55,23 +57,28 @@ class DatasetMeta_dl(dsf.DatasetMeta):
         images_and_targets = []
         aux_info = []
         images_info = []
-        class_to_iid = {}
+        iid_to_classidx = {}
         image_dir = os.path.join(root, "images")
         with open(os.path.join(root, info_file_name), 'r') as f:
             info = json.load(f)
 
+        imagename_to_iid = {}
         for entry in info:
             iid = entry[0]
             class_idx = int(entry[1])
-            dest_path = entry[2]
-            image_name = entry[3]
+            # dest_path = entry[2]
+            image_file_name = entry[3]
             attr = entry[4]
-    
-            file_path = os.path.join(image_dir, str(iid), image_name)
-            class_to_iid[class_idx] = iid # will do multiple times
+
+            file_path = os.path.join(image_dir, str(iid), image_file_name)
+            iid_to_classidx[iid] = class_idx  # will do multiple times
+
+            image_name, fext = os.path.splitext(image_file_name)
+            imagename_to_iid[image_name] = iid
             images_and_targets.append([file_path, class_idx, attr])
 
-        return images_and_targets, class_to_iid, aux_info, images_info
+        return images_and_targets, iid_to_classidx, imagename_to_iid, \
+            aux_info, images_info
 
     def write_layerjot(self, root, info_file_name, info_list, valid_classes):
         file_dir, file_name = os.path.split(info_file_name)
@@ -80,7 +87,8 @@ class DatasetMeta_dl(dsf.DatasetMeta):
         if not os.path.exists(info_dir):
             os.makedirs(info_dir, exist_ok=True)
         elif not os.path.isdir(info_dir):
-            raise Exception("{} exists and is not a directory!".format(info_dir))
+            raise Exception("{} exists and is not a directory!".
+                            format(info_dir))
 
         info_file_path = os.path.join(info_dir, file_name)
 
@@ -96,7 +104,7 @@ class DatasetMeta_dl(dsf.DatasetMeta):
         with open(info_file_path, 'w') as f:
             json.dump(info_list, f, cls=NpEncoder)
             print("write completed")
-            
+
     def ratio_dims(self, dims):
         mod_dims = copy.deepcopy(dims)
         if len(mod_dims) < 2:
@@ -109,10 +117,17 @@ class DatasetMeta_dl(dsf.DatasetMeta):
             mod_dims[1] = mod_dims[1]/d1
         return mod_dims
 
-    def create_all_image_info(self, root, project, token, bucket, dataset, clear_dir, overwrite):
+    def create_all_image_info(self, root, project, token, bucket, dataset,
+                              clear_data):
         ds_dl = DatasetN1MultiModalCrops(project, token, bucket, dataset)
         ds_dl.create_datasources()
-        n1_crops_tbl = ds_dl.images.to_table(columns=['item_id', 'image_name', 'in_fence', 'dims', 'description','crop_data']).to_pandas()
+        n1_crops_tbl = \
+            ds_dl.images.to_table(columns=['item_id',
+                                           'image_name',
+                                           'in_fence',
+                                           'dims',
+                                           'description',
+                                           'crop_data']).to_pandas()
 
         item_ids = n1_crops_tbl['item_id']
         in_fences = n1_crops_tbl['in_fence']
@@ -120,55 +135,61 @@ class DatasetMeta_dl(dsf.DatasetMeta):
         descs = n1_crops_tbl['description']
         image_names = n1_crops_tbl['image_name']
         crop_data = n1_crops_tbl['crop_data']
+        iid_to_classidx = {}
 
         class_idx = 0
         all_image_info = []
         image_dir = os.path.join(root, "images")
-        if os.path.exists(image_dir) and clear_dir:
+        if os.path.exists(image_dir) and clear_data:
             if not os.path.isdir(image_dir):
                 raise Exception("Directory {} is not a directory.  "
                                 "Exiting!".format(image_dir))
             shutil.rmtree(image_dir)
-                    
-        iid_to_classidx = {}
+
         for count in range(len(item_ids)):
             iid = item_ids[count]
             base_dir = os.path.join(image_dir, str(iid))
 
             # If this is a new iid, assign it a class index
-            if not iid in iid_to_classidx:
-                iid_to_classidx[iid] = class_idx
+            if iid not in iid_to_classidx:
                 class_idx += 1
- 
+                iid_to_classidx[iid] = class_idx
+
                 # Create the directory for the iid.  If already exists,
                 # just make sure it is a directory.
                 if os.path.exists(base_dir):
                     if not os.path.isdir(base_dir):
                         raise Exception("Directory {} is not a directory."
                                         " Exiting!".format(base_dir))
-                    else:
-                        os.makedirs(base_dir, exist_ok=True)
+                else:
+                    os.makedirs(base_dir, exist_ok=True)
 
             image_name = str(image_names[count])
-            #dim = self.ratio_dims(dims[count])
+
+            # dim = self.ratio_dims(dims[count])
             dim = dims[count]
             in_fence = in_fences[count]
             desc = descs[count]
             cls_idx = iid_to_classidx[iid]
 
             attr = {
-                'iid' : iid,
-                'image_name' : image_name,
-                'dim' : dim,
-                'in_fence' : in_fence,
-                'desc' : desc
+                'iid': iid,
+                'image_name': image_name,
+                'dim': dim,
+                'in_fence': in_fence,
+                'desc': desc
             }
 
             # handle the attributes and image for this entry
-                    
-            img_file_name = "{}.jpg".format(image_name)
+
+            base_image_name, fext = os.path.splitext(image_name)
+            if not fext:
+                img_file_name = "{}.jpg".format(base_image_name)
+            else:
+                img_file_name = image_name
+
             dest_path = os.path.join(base_dir, img_file_name)
-            if not os.path.exists(dest_path) or overwrite:
+            if not os.path.exists(dest_path):
                 photo = crop_data[count]
                 stream_image = io.BytesIO(photo)
                 image = Image.open(stream_image)
@@ -177,14 +198,19 @@ class DatasetMeta_dl(dsf.DatasetMeta):
             # record complete infomation tuple for this entry.
             info = (iid, cls_idx, dest_path, img_file_name, attr)
             all_image_info.append(info)
-        return all_image_insfo
-    
+
+        return all_image_info
+
     def create_evaluation_list(self,
                                project, token, bucket, dataset,
-                               root, eval_file,
-                               eval_ratio=0.10,
-                               overwrite=True,
-                               clear_dir=True):
+                               root, eval_file, eval_ratio,
+                               clear_data, reshuffle):
+        """
+        Create an evaluation dataset with given eval_ratio.
+        param clear_data: clear images and rebuild all instance information
+        param reshuffle: reshuffle the eval dataset.  It preserves current
+        dataset but reshuffles the evaluation dataset contents.
+        """
         # Wait for lock.  Once we have lock, we either read the
         # information directly from the training/validation directory
         # or we create those two files
@@ -199,20 +225,40 @@ class DatasetMeta_dl(dsf.DatasetMeta):
         try:
             eval_file_path = os.path.join(root, eval_file)
             print("Checking if file {} exists...".format(eval_file_path))
-            if not os.path.exists(eval_file_path):
-                print("file {} does not exist. Making...".format(eval_file_path))
-                all_image_info = self.create_all_image_info(root, project, token, bucket, dataset, clear_dir, overwrite)
-                                   
+            path_exists = os.path.exists(eval_file_path)
+            all_image_info = []
+            if not path_exists or clear_data:
+                if not path_exists:
+                    print("file {} does not exist; making...".
+                          format(eval_file_path))
+                else:
+                    print("Remaking file {}...".format(eval_file_path))
+
+                all_image_info = \
+                    self.create_all_image_info(root, project, token,
+                                               bucket, dataset,
+                                               clear_data)
+            elif reshuffle:
+                # Reshuffle test set
+                print("Reshuffling test data set...")
+                with open(os.path.join(eval_file_path), 'r') as f:
+                    all_image_info = json.load(f)
+
+            if all_image_info:
+                classes = set(entry[0] for entry in all_image_info)
+                nclasses = len(classes)
+
                 # Now only use eval_ratio of all images for eval.
                 np.random.shuffle(all_image_info)
                 split_idx = int(len(all_image_info)*eval_ratio)
                 eval_list = all_image_info[:split_idx]
 
                 print("N classes {} n eval {}".
-                      format(class_idx+1, len(eval_list)))
+                      format(nclasses, len(eval_list)))
 
                 # write info into training and validation file
                 self.write_layerjot(root, eval_file_path, eval_list, None)
+
         finally:
             # once the information is written, we can
             # release the lock
@@ -222,8 +268,14 @@ class DatasetMeta_dl(dsf.DatasetMeta):
                                          project, token, bucket, dataset,
                                          root, training_ratio,
                                          train_file, val_file,
-                                         overwrite=True,
-                                         clear_dir=True):
+                                         clear_data, reshuffle):
+        """
+        Create a new training and evaluation datasets with given eval_ratio.
+        param clear_data: clear images and rebuild all instance information
+        param reshuffle: reshuffle training and evaluation datasets.
+        It preserves current dataset but reshuffles the
+        training/eval dataset contents.
+        """
         # Wait for lock.  Once we have lock, we either read the
         # information directly from the training/validation directory
         # or we create those two files
@@ -237,12 +289,36 @@ class DatasetMeta_dl(dsf.DatasetMeta):
         # If they do not exist, then create them
 
         try:
+            all_image_info = []
             train_file_path = os.path.join(root, train_file)
+            eval_file_path = os.path.join(root, val_file)
+
             print("Checking if file {} exists...".format(train_file_path))
-            if not os.path.exists(train_file_path):
-                print("file {} does not exist. Making...".format(train_file_path))
-                all_image_info = self.create_all_image_info(root, project, token, bucket, dataset, clear_dir, overwrite)
-                                   
+            path_exists = os.path.exists(train_file_path)
+            if not path_exists or clear_data:
+                if not path_exists:
+                    print("file {} does not exist; making along with {}...".
+                          format(train_file_path, eval_file_path))
+                else:
+                    print("Remaking files {} and {}...".
+                          format(train_file_path, eval_file_path))
+
+                all_image_info = \
+                    self.create_all_image_info(root, project, token, bucket,
+                                               dataset, clear_data)
+            elif reshuffle:
+                # Reshuffle training and evaluation sets
+                print("Reshuffling training and evaluation data sets...")
+                with open(train_file_path, 'r') as f:
+                    training_image_info = json.load(f)
+                with open(eval_file_path, 'r') as f:
+                    eval_image_info = json.load(f)
+                all_image_info = training_image_info+eval_image_info
+
+            if all_image_info:
+                classes = set(entry[0] for entry in all_image_info)
+                nclasses = len(classes)
+
                 # Now partition into training and validation
                 np.random.shuffle(all_image_info)
                 split_idx = int(len(all_image_info)*training_ratio)
@@ -250,7 +326,7 @@ class DatasetMeta_dl(dsf.DatasetMeta):
                 validation_list = all_image_info[split_idx:]
 
                 print("N classes {} n training {} n val {}".
-                      format(class_idx+1,
+                      format(nclasses,
                              len(training_list),
                              len(validation_list)))
 
@@ -270,10 +346,11 @@ class DatasetMeta_dl(dsf.DatasetMeta):
             self.release_lock(lock)
 
     def extract_images(self, root, info_file):
-        images_and_targets, class_to_iid, aux_info, images_info = \
-                self.read_layerjot(root, info_file)
-        return images_and_targets, class_to_iid, images_info
-    
+        images_and_targets, iid_to_classidx, imagename_to_iid, \
+            aux_info, images_info = self.read_layerjot(root, info_file)
+        return images_and_targets, iid_to_classidx, imagename_to_iid, \
+            images_info
+
     def __init__(
             self,
             root,
@@ -287,8 +364,8 @@ class DatasetMeta_dl(dsf.DatasetMeta):
             token='google_default',
             class_ratio=1.0,
             per_sample=1.0,
-            overwrite=True,
-            clear_dir=True,
+            clear_data=False,
+            reshuffle=False,
             use_attr=False,
             use_txt=False,
             eval_mode=False
@@ -299,24 +376,24 @@ class DatasetMeta_dl(dsf.DatasetMeta):
             self.create_training_validation_lists(project, token, bucket,
                                                   dataset, root, class_ratio,
                                                   train_file, val_file,
-                                                  overwrite=overwrite,
-                                                  clear_dir=clear_dir)
+                                                  clear_data, reshuffle)
             use_file = train_file if train else val_file
         else:
             use_file = os.path.join("eval", "imageinfo.json")
             self.create_evaluation_list(project, token, bucket, dataset,
                                         root, use_file, class_ratio,
-                                        overwrite=overwrite,
-                                        clear_dir=clear_dir)
+                                        clear_data, reshuffle)
         self.aux_info = use_attr or use_txt
         self.dataset = dataset
         self.root = root
 
-        images, class_to_iid, images_info = self.extract_images(root, use_file)
+        images, iid_to_classidx, imagename_to_iid, images_info = \
+            self.extract_images(root, use_file)
 
         self.samples = images
         self.imgs = self.samples  # torchvision ImageFolder compat
-        self.class_to_idx = class_to_iid
+        self.class_to_idx = iid_to_classidx
+        self.imagename_to_iid = imagename_to_iid
         self.images_info = images_info
         self.load_bytes = load_bytes
         self.transform = transform
@@ -326,10 +403,10 @@ class DatasetMeta_dl(dsf.DatasetMeta):
             docs = []
             for image_path, class_idx, attr in self.samples:
                 desc = attr['desc']
-                next_doc = tu.create_ngrams(desc.split(), ngram = NGRAM)
+                next_doc = tu.create_ngrams(desc.split(), ngram=NGRAM)
                 docs.append(next_doc)
             self.desc_dict, self.desc_lda, self.desc_simindex = \
-                tu.create_ldasim(docs, ntopics = NTOPICS)
+                tu.create_ldasim(docs, ntopics=NTOPICS)
         else:
             self.desc_dict = self.desc_lda = self.desc_simindex = None
 
@@ -355,14 +432,15 @@ class DatasetMeta_dl(dsf.DatasetMeta):
                                          self.desc_dict,
                                          self.desc_lda,
                                          self.desc_simindex,
-                                         ngram = NGRAM)
+                                         ngram=NGRAM)
             txt_attr = self.vector_lda_to_attr(vec_lda, NTOPICS).tolist()
 
         return (v_attr, txt_attr)
-            
+
     def __getitem__(self, index):
         img_path, class_idx, attr = self.samples[index]
-        img = open(img_path, 'rb').read() if self.load_bytes else Image.open(img_path).convert('RGB')
+        img = open(img_path, 'rb').read() if self.load_bytes \
+            else Image.open(img_path).convert('RGB')
 
         if self.transform is not None:
             img = self.transform(img)
@@ -373,9 +451,7 @@ class DatasetMeta_dl(dsf.DatasetMeta):
         else:
             all_attr = []
 
-
         if all_attr:
             return img, class_idx, np.asarray(all_attr).astype(np.float64)
         else:
             return img, class_idx
-
