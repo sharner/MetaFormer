@@ -9,4 +9,4 @@ docker run \
     --mount type=bind,source=/data,target=/data \
     --mount type=bind,source=/home,target=/home \
     --env="DISPLAY" \
-    --rm --network host -it metaformer.forest:latest
+    --rm --network host -it --shm-size=2G metaformer.forest:latest

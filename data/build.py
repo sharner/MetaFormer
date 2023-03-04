@@ -72,7 +72,17 @@ def build_loader(config):
 
 def build_dataset(is_train, config):
     transform = build_transform(is_train, config)
-    if config.DATA.DATASET == 'imagenet':
+
+    if config.DATA.IS_LAYERJOT:
+        root = os.path.join(config.DATA.DATA_PATH, config.DATA.DATASET)
+        os.makedirs(root, exist_ok=True)
+        use_attr = config.DATA.USE_ATTR
+        use_txt = config.DATA.USE_TXT
+        use_aux = use_attr or use_txt
+        dataset = DatasetMeta_dl(root=root,transform=transform,train=is_train,aux_info=use_aux,use_attr=use_attr,use_txt=use_txt,dataset=config.DATA.DATASET,class_ratio=0.90)
+        nb_classes = dataset.n_classes()
+        
+    elif config.DATA.DATASET == 'imagenet':
         prefix = 'train' if is_train else 'val'
         if config.DATA.ZIP_MODE:
             ann_file = prefix + "_map.txt"
@@ -109,16 +119,6 @@ def build_dataset(is_train, config):
     elif config.DATA.DATASET == 'layerjot.2022_05_04':
         root = os.path.join(config.DATA.DATA_PATH, "layerjot")
         dataset = DatasetMeta(root=root,transform=transform,train=is_train,aux_info=config.DATA.ADD_META,dataset=config.DATA.DATASET)
-        nb_classes = dataset.n_classes()
-    elif config.DATA.DATASET == 'n1_crops' \
-         or config.DATA.DATASET == 'n1_multimodal_data':
-        root = os.path.join(config.DATA.DATA_PATH, "layerjot",
-                            config.DATA.DATASET)
-        os.makedirs(root, exist_ok=True)
-        use_attr = config.DATA.USE_ATTR
-        use_txt = config.DATA.USE_TXT
-        use_aux = use_attr or use_txt
-        dataset = DatasetMeta_dl(root=root,transform=transform,train=is_train,aux_info=use_aux,use_attr=use_attr,use_txt=use_txt,dataset=config.DATA.DATASET,class_ratio=0.90)
         nb_classes = dataset.n_classes()
     elif config.DATA.DATASET == 'stanfordcars':
         root = './datasets/stanfordcars'

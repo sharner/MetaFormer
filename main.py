@@ -75,6 +75,8 @@ def parse_option():
     
     parser.add_argument('--dataset', type=str,
                         help='dataset')
+    parser.add_argument('--layerjot', action='store_true', default=False,
+                        help='dataset is layerjot datalake dataset')
     parser.add_argument('--lr-scheduler-name', type=str,
                         help='lr scheduler name,cosin linear,step')
     

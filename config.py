@@ -24,6 +24,8 @@ _C.DATA.BATCH_SIZE = 32
 _C.DATA.DATA_PATH = ''
 # Dataset name
 _C.DATA.DATASET = 'imagenet'
+# Layerjot dataset
+_C.DATA.IS_LAYERJOT = False
 # Input image size
 _C.DATA.IMG_SIZE = 224
 # Interpolation to resize image (random, bilinear, bicubic)
@@ -256,10 +258,16 @@ def update_config(config, args):
         config.TRAIN.EPOCHS = args.epochs
     if args.dataset is not None:
         config.DATA.DATASET = args.dataset
+    if args.layerjot is not None:
+        config.DATA.IS_LAYERJOT = args.layerjot
     if args.lr_scheduler_name is not None:
         config.TRAIN.LR_SCHEDULER.NAME = args.lr_scheduler_name
     if args.pretrain is not None:
         config.MODEL.PRETRAINED = args.pretrain
+
+    if config.DATA.DATASET == 'n1_crops' or \
+       config.DATA.DATASET == 'n1_multimodal_data':
+       config.DATA.IS_LAYERJOT = True
 
     # set local rank for distributed training
     config.LOCAL_RANK = args.local_rank

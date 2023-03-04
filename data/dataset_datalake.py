@@ -16,6 +16,7 @@ from LJCVPyCore.TrainDatasets import DatasetN1MultiModalCrops
 
 NGRAM = 3
 NTOPICS = 64
+ALLIMAGEINFO = "allimageinfo.json"
 
 # Required to properly encode numpy data types.
 
@@ -62,7 +63,20 @@ class DatasetMeta_dl(dsf.DatasetMeta):
         with open(os.path.join(root, info_file_name), 'r') as f:
             info = json.load(f)
 
+        with open(os.path.join(root, ALLIMAGEINFO), 'r') as af:
+            all_info = json.load(af)
+
+        # overall iid to class index is determined by complete
+        # dataset.
+
         imagename_to_iid = {}
+        for entry in all_info:
+            iid = entry[0]
+            class_idx = int(entry[1])
+            iid_to_classidx[iid] = class_idx  # will do multiple times
+
+        # images and targets used determined by the info_file
+
         for entry in info:
             iid = entry[0]
             class_idx = int(entry[1])
@@ -71,7 +85,6 @@ class DatasetMeta_dl(dsf.DatasetMeta):
             attr = entry[4]
 
             file_path = os.path.join(image_dir, str(iid), image_file_name)
-            iid_to_classidx[iid] = class_idx  # will do multiple times
 
             image_name, fext = os.path.splitext(image_file_name)
             imagename_to_iid[image_name] = iid
@@ -223,26 +236,44 @@ class DatasetMeta_dl(dsf.DatasetMeta):
         # The critical section is writing eval file
 
         try:
+            all_info_path = os.path.join(root, ALLIMAGEINFO)
+            allinfo_path_exists = os.path.exists(all_info_path)
+
             eval_file_path = os.path.join(root, eval_file)
             print("Checking if file {} exists...".format(eval_file_path))
             path_exists = os.path.exists(eval_file_path)
+
             all_image_info = []
-            if not path_exists or clear_data:
-                if not path_exists:
+            if not allinfo_path_exists or clear_data:
+                if not allinfo_path_exists:
                     print("file {} does not exist; making...".
-                          format(eval_file_path))
+                          format(all_info_path))
                 else:
-                    print("Remaking file {}...".format(eval_file_path))
+                    print("Remaking file {}...".format(allinfo_path_exists))
 
                 all_image_info = \
                     self.create_all_image_info(root, project, token,
                                                bucket, dataset,
                                                clear_data)
+
+                # Write the info file
+                self.write_layerjot(root, all_info_path, all_image_info, None)
             elif reshuffle:
                 # Reshuffle test set
                 print("Reshuffling test data set...")
-                with open(os.path.join(eval_file_path), 'r') as f:
-                    all_image_info = json.load(f)
+                with open(os.path.join(all_info_path), 'r') as af:
+                    all_image_info = json.load(af)
+            elif not path_exists:
+                with open(all_info_path, 'r') as af:
+                    all_image_info = json.load(af)
+                print("file {} does not exist; making...".
+                      format(eval_file_path))
+            else:
+                # No action required - all info and eval files exist
+                pass
+
+            # if we are either creating, recreating (clear_data),
+            # or reshuffling, rewrite eval file path
 
             if all_image_info:
                 classes = set(entry[0] for entry in all_image_info)
@@ -290,30 +321,46 @@ class DatasetMeta_dl(dsf.DatasetMeta):
 
         try:
             all_image_info = []
+
+            all_info_path = os.path.join(root, ALLIMAGEINFO)
+            allinfo_path_exists = os.path.exists(all_info_path)
             train_file_path = os.path.join(root, train_file)
             eval_file_path = os.path.join(root, val_file)
 
-            print("Checking if file {} exists...".format(train_file_path))
+            print("Checking if file {} and {} exists...".
+                  format(all_info_path, train_file_path))
             path_exists = os.path.exists(train_file_path)
-            if not path_exists or clear_data:
-                if not path_exists:
-                    print("file {} does not exist; making along with {}...".
-                          format(train_file_path, eval_file_path))
+
+            all_image_info = []
+            if not allinfo_path_exists or clear_data:
+                if not allinfo_path_exists:
+                    print("file {} does not exist; making...".
+                          format(all_info_path))
                 else:
-                    print("Remaking files {} and {}...".
-                          format(train_file_path, eval_file_path))
+                    print("Remaking files {}, {} and {}...".
+                          format(all_info_path, train_file_path,
+                                 eval_file_path))
 
                 all_image_info = \
-                    self.create_all_image_info(root, project, token, bucket,
-                                               dataset, clear_data)
+                    self.create_all_image_info(root, project, token,
+                                               bucket, dataset,
+                                               clear_data)
+
+                # Write the info file
+                self.write_layerjot(root, all_info_path, all_image_info, None)
             elif reshuffle:
-                # Reshuffle training and evaluation sets
-                print("Reshuffling training and evaluation data sets...")
-                with open(train_file_path, 'r') as f:
-                    training_image_info = json.load(f)
-                with open(eval_file_path, 'r') as f:
-                    eval_image_info = json.load(f)
-                all_image_info = training_image_info+eval_image_info
+                # Reshuffle test set
+                print("Reshuffling training/validation data sets...")
+                with open(os.path.join(all_info_path), 'r') as af:
+                    all_image_info = json.load(af)
+            elif not path_exists:
+                with open(os.path.join(root, all_info_path), 'r') as af:
+                    all_image_info = json.load(af)
+                print("files {} and {} do not exist; making...".
+                      format(train_file_path, eval_file_path))
+            else:
+                # No action required - all files exist
+                pass
 
             if all_image_info:
                 classes = set(entry[0] for entry in all_image_info)
